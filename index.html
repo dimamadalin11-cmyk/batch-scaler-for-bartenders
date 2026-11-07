@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Batch Scaler</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1c1c1a;--mut:#6b6b66;--card:#f0eee9;--line:#d9d6cf;--acc:#1f6feb;--accfg:#fff;--bad:#c0392b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#17181a;--fg:#ecebe7;--mut:#9a9992;--card:#232427;--line:#34363a;--acc:#5b9bff;--accfg:#0b1220;--bad:#ff7b6b}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#17181a;--fg:#ecebe7;--mut:#9a9992;--card:#232427;--line:#34363a;--acc:#5b9bff;--accfg:#0b1220;--bad:#ff7b6b}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 14px}
+h2{font-size:15px;color:var(--mut);margin:22px 0 8px;text-transform:uppercase;letter-spacing:.04em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+label{display:block;font-size:12px;color:var(--mut)}
+input,textarea{width:100%;font:inherit;font-size:16px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:3px;min-height:44px}
+.top{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.top input{margin:0}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+button{font:inherit;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:0 14px}
+button.p{background:var(--acc);color:var(--accfg);border-color:var(--acc);font-weight:600}
+button.x{min-width:44px;padding:0;color:var(--bad)}
+.line{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.line span{color:var(--mut);text-align:right}
+.tot{display:flex;justify-content:space-between;padding-top:10px;font-weight:600}
+.big{font-size:20px}
+.row{display:flex;gap:8px}
+.row input{margin:0}
+.rec{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.rec .nm{flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hint{font-size:12px;color:var(--mut);margin:6px 0}
+</style></head>
+<body><main>
+<h1>🍸 Batch Scaler</h1>
+<label>Number of drinks<input id="drinks" type="number" inputmode="numeric" min="0" value="150"></label>
+
+<h2>Ingredients</h2>
+<div id="rows"></div>
+<button id="add">+ Add ingredient</button>
+
+<h2>Result</h2>
+<div class="card" id="res"></div>
+<div class="hint">Cost counts whole bottles, since you cannot buy part of one. Prices in RON.</div>
+
+<h2>Save recipe</h2>
+<div class="row">
+  <input id="rname" placeholder="Recipe name, e.g. Negroni">
+  <button class="p" id="save">Save</button>
+</div>
+<div class="hint" id="msg"></div>
+
+<h2>Saved recipes</h2>
+<div id="list"></div>
+<div class="hint" id="where"></div>
+
+<h2>Backup</h2>
+<textarea id="bk" rows="5" placeholder="Export fills this box. To import, paste a backup here."></textarea>
+<div class="row" style="margin-top:8px"><button id="exp">Export</button><button id="imp">Import</button></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=n=>Number.isFinite(n)?n.toLocaleString(undefined,{maximumFractionDigits:2}):"–";
+const LS="batchScalerRecipes";
+let items=[{name:"Gin",ml:30,size:700,price:""},{name:"Campari",ml:30,size:1000,price:""},{name:"Vermouth",ml:30,size:1000,price:""}];
+let recipes=[],dbCol=null,local={};
+
+function renderRows(){
+  $("#rows").innerHTML=items.map((it,i)=>`<div class="card" data-i="${i}">
+  <div class="top"><input data-k="name" placeholder="Ingredient" value="${esc(it.name)}"><button class="x" aria-label="Remove ingredient">✕</button></div>
+  <div class="grid">
+    <label>ml per drink<input data-k="ml" type="number" inputmode="decimal" min="0" value="${esc(it.ml)}"></label>
+    <label>Bottle ml<input data-k="size" type="number" inputmode="decimal" min="0" value="${esc(it.size)}"></label>
+    <label>Price / bottle<input data-k="price" type="number" inputmode="decimal" min="0" placeholder="0" value="${esc(it.price)}"></label>
+  </div></div>`).join("");
+}
+function calc(){
+  const n=+$("#drinks").value||0;let L=0,C=0;
+  const lines=items.map(it=>{
+    const amt=(+it.ml||0)*n,b=+it.size>0?Math.ceil(amt/+it.size):0,cost=b*(+it.price||0);
+    L+=amt;C+=cost;
+    return `<div class="line"><b>${esc(it.name||"Ingredient")}</b><span>${fmt(amt)} ml · ${b} bottle${b===1?"":"s"} · ${fmt(cost)} RON</span></div>`;
+  });
+  $("#res").innerHTML=lines.join("")+
+   `<div class="tot"><span>Total volume</span><span class="big">${fmt(L/1000)} L</span></div>
+    <div class="tot"><span>Total cost</span><span class="big">${fmt(C)} RON</span></div>
+    <div class="tot"><span>Cost per drink</span><span>${n>0?fmt(C/n):"–"} RON</span></div>`;
+}
+$("#rows").addEventListener("input",e=>{
+  const card=e.target.closest(".card"),k=e.target.dataset.k;
+  if(!card||!k)return;
+  items[+card.dataset.i][k]=e.target.value;calc();
+});
+$("#rows").addEventListener("click",e=>{
+  if(!e.target.closest(".x"))return;
+  items.splice(+e.target.closest(".card").dataset.i,1);renderRows();calc();
+});
+$("#add").onclick=()=>{items.push({name:"",ml:"",size:"",price:""});renderRows();calc();};
+$("#drinks").addEventListener("input",calc);
+
+function msg(t){$("#msg").textContent=t;}
+function renderList(){
+  const sorted=[...recipes].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  $("#list").innerHTML=sorted.length?sorted.map(r=>`<div class="rec" data-id="${esc(r.id)}"><button class="nm">${esc(r.name)} · ${esc(r.drinks)} drinks</button><button class="x" aria-label="Delete recipe">✕</button></div>`).join(""):'<div class="hint">No saved recipes yet.</div>';
+}
+function useLocal(){
+  try{local=JSON.parse(localStorage.getItem(LS)||"{}")}catch(e){local={}}
+  recipes=Object.entries(local).map(([id,r])=>({id,...r}));renderList();
+  $("#where").textContent="Saved on this device only.";
+}
+$("#save").onclick=async()=>{
+  const name=$("#rname").value.trim();
+  if(!name){$("#rname").focus();return;}
+  const rec={name,drinks:+$("#drinks").value||0,items:items.map(x=>({...x}))};
+  try{
+    await put(rec);
+    msg("Saved: "+name);
+  }catch(e){msg("Could not save. Try again.");}
+};
+$("#list").addEventListener("click",async e=>{
+  const row=e.target.closest(".rec");if(!row)return;
+  const id=row.dataset.id,r=recipes.find(x=>x.id===id);if(!r)return;
+  if(e.target.closest(".x")){
+    try{
+      if(dbCol){await dbCol.doc(id).delete();}
+      else{delete local[id];localStorage.setItem(LS,JSON.stringify(local));recipes=Object.entries(local).map(([k,v])=>({id:k,...v}));renderList();}
+    }catch(err){msg("Could not delete.");}
+    return;
+  }
+  items=(r.items||[]).map(x=>({...x}));
+  $("#drinks").value=r.drinks||0;$("#rname").value=r.name;
+  renderRows();calc();msg("Loaded: "+r.name);window.scrollTo({top:0,behavior:"smooth"});
+});
+
+async function put(rec){
+  const id="r-"+(rec.name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||Date.now());
+  if(dbCol){await dbCol.doc(id).set(rec);}
+  else{local[id]=rec;localStorage.setItem(LS,JSON.stringify(local));recipes=Object.entries(local).map(([k,r])=>({id:k,...r}));renderList();}
+}
+$("#exp").onclick=async()=>{
+  $("#bk").value=JSON.stringify(recipes.map(({id,...r})=>r),null,1);
+  try{await navigator.clipboard.writeText($("#bk").value);msg("Copied. Paste it into Notes to keep it.");}
+  catch(e){msg("Select the text in the box and copy it.");}
+};
+$("#imp").onclick=async()=>{
+  try{
+    const a=JSON.parse($("#bk").value);
+    if(!Array.isArray(a))throw 0;
+    let n=0;
+    for(const r of a){
+      if(!r||typeof r.name!=="string"||!r.name.trim()||!Array.isArray(r.items))continue;
+      await put({name:r.name.trim(),drinks:+r.drinks||0,items:r.items.map(x=>({name:String(x.name??""),ml:x.ml??"",size:x.size??"",price:x.price??""}))});n++;
+    }
+    msg("Imported "+n+" recipe"+(n===1?"":"s")+". Same names were overwritten.");
+  }catch(e){msg("Could not read that. Paste a full backup from Export.");}
+};
+renderRows();calc();useLocal();
+(async()=>{
+  try{
+    if(!window.claude)return;
+    const dbm=await claude.use("db"),um=await claude.use("user");
+    const uid=dbm&&um?await um.id():null;
+    if(!dbm||!uid)return;
+    dbCol=dbm.collection("data/users/"+uid);
+    dbCol.onSnapshot(s=>{recipes=s.docs.map(d=>({id:d.id,...d.data()}));renderList();$("#where").textContent="Saved to your account.";},
+      ()=>{dbCol=null;useLocal();});
+  }catch(e){}
+})();
+</script>
+</main></body></html>
