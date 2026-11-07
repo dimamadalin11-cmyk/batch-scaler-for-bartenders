@@ -2,7 +2,7 @@
 
 A cocktail batch calculator. Enter how many drinks you are making and the recipe, and it shows how much of each ingredient you need, how many bottles to buy, and what it costs.
 
-**Open it:** https://dimamadalin11-cmyk.github.io/batch-scaler/
+**Open it:** https://dimamadalin11-cmyk.github.io/batch-scaler-for-bartenders/
 
 ## What it does
 - Scales any recipe to any number of drinks (amounts in ml)
