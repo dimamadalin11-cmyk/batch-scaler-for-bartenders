@@ -32,8 +32,11 @@ button.x{min-width:44px;padding:0;color:var(--bad)}
 </style></head>
 <body><main>
 <h1>🍸 Batch Scaler</h1>
-<label>Number of drinks<input id="drinks" type="number" inputmode="numeric" min="0" value="150"></label>
-
+  
+<label>Scale by
+<select id="mode"><option value="drinks">Number of drinks</option><option value="bottles">Finished bottles</option></select></label>
+<div id="mDrinks"><label>Drinks<input id="drinks" type="number" inputmode="numeric" min="0" value="150"></label></div>
+<div id="mBottles" hidden><label>Bottles to make<input id="bcount" type="number" inputmode="numeric" min="0" value="10"></label><label>Finished bottle ml<input id="bsize" type="number" inputmode="decimal" min="0" value="700"></label></div>
 <h2>Ingredients</h2>
 <div id="rows"></div>
 <button id="add">+ Add ingredient</button>
@@ -74,8 +77,13 @@ function renderRows(){
     <label>Price / bottle<input data-k="price" type="number" inputmode="decimal" min="0" placeholder="0" value="${esc(it.price)}"></label>
   </div></div>`).join("");
 }
+function drinksNow(){
+  if($("#mode").value!=="bottles")return +$("#drinks").value||0;
+  const per=items.reduce((s,it)=>s+(+it.ml||0),0);
+  return per>0?Math.round((+$("#bcount").value||0)*(+$("#bsize").value||0)/per):0;
+}
 function calc(){
-  const n=+$("#drinks").value||0;let L=0,C=0;
+  const n=drinksNow();let L=0,C=0;
   const lines=items.map(it=>{
     const amt=(+it.ml||0)*n,b=+it.size>0?Math.ceil(amt/+it.size):0,cost=b*(+it.price||0);
     L+=amt;C+=cost;
@@ -97,7 +105,9 @@ $("#rows").addEventListener("click",e=>{
 });
 $("#add").onclick=()=>{items.push({name:"",ml:"",size:"",price:""});renderRows();calc();};
 $("#drinks").addEventListener("input",calc);
-
+$("#bcount").addEventListener("input",calc);
+$("#bsize").addEventListener("input",calc);
+$("#mode").addEventListener("change",()=>{$("#mDrinks").hidden=$("#mode").value!=="drinks";$("#mBottles").hidden=$("#mode").value==="drinks";calc();});
 function msg(t){$("#msg").textContent=t;}
 function renderList(){
   const sorted=[...recipes].sort((a,b)=>String(a.name).localeCompare(String(b.name)));
@@ -111,7 +121,7 @@ function useLocal(){
 $("#save").onclick=async()=>{
   const name=$("#rname").value.trim();
   if(!name){$("#rname").focus();return;}
-  const rec={name,drinks:+$("#drinks").value||0,items:items.map(x=>({...x}))};
+  const rec={name,drinks:drinksNow(),items:items.map(x=>({...x}))};
   try{
     await put(rec);
     msg("Saved: "+name);
